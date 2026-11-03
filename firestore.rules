@@ -1,0 +1,135 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 150 &&
+             data.displayName is string && data.displayName.size() <= 100;
+    }
+
+    function isValidSavedPlace(data) {
+      return data.keys().hasAll(['userId', 'placeId', 'title', 'category']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.placeId is string && data.placeId.size() <= 128 &&
+             data.title is string && data.title.size() <= 150 &&
+             data.category is string && data.category.size() <= 50;
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll(['userId', 'userName', 'placeId', 'rating', 'comment']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.userName is string && data.userName.size() <= 100 &&
+             data.placeId is string && data.placeId.size() <= 128 &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             data.comment is string && data.comment.size() <= 1000;
+    }
+
+    function isValidPlan(data) {
+      return data.keys().hasAll(['userId', 'when', 'withWhom', 'vibe']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.when is string && data.when.size() <= 50 &&
+             data.withWhom is string && data.withWhom.size() <= 50 &&
+             data.vibe is string && data.vibe.size() <= 50;
+    }
+
+    function isValidVisit(data) {
+      return data.keys().hasAll(['userId', 'placeId', 'placeTitle']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.placeId is string && data.placeId.size() <= 128 &&
+             data.placeTitle is string && data.placeTitle.size() <= 150;
+    }
+
+    function isValidCoupon(data) {
+      return data.keys().hasAll(['code', 'discount', 'title']) &&
+             data.code is string && data.code.size() <= 50 &&
+             data.discount is string && data.discount.size() <= 50 &&
+             data.title is string && data.title.size() <= 150;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if isOwner(userId);
+    }
+
+    // Saved places ("Guardados")
+    match /saved_places/{savedPlaceId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidSavedPlace(request.resource.data);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidSavedPlace(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Community reviews (flat collection)
+    match /reviews/{reviewId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && isValidReview(request.resource.data);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidReview(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Place documents & sub-collection reviews
+    match /places/{placeId} {
+      allow get, list: if true;
+
+      match /reviews/{reviewId} {
+        allow get, list: if true;
+        allow create: if isSignedIn() && isValidReview(request.resource.data);
+        allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidReview(request.resource.data);
+        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // Outing decision plans
+    match /outing_plans/{planId} {
+      allow get, list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidPlan(request.resource.data);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidPlan(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // User check-ins and visit history ("Visitas")
+    match /visitas/{visitId} {
+      allow get, list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidVisit(request.resource.data);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidVisit(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Partner discount coupons ("Cupons")
+    match /cupons/{cupomId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && isValidCoupon(request.resource.data);
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    match /Cupons/{cupomId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && isValidCoupon(request.resource.data);
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+  }
+}

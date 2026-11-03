@@ -1,0 +1,151 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile containing settings, bio, and preferences for recommendations.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique auth UID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "maxLength": 100, "description": "User full or display name" },
+        "photoURL": { "type": "string", "maxLength": 500, "description": "Avatar image URL" },
+        "city": { "type": "string", "maxLength": 100, "description": "Current or home city" },
+        "defaultVibe": { "type": "string", "maxLength": 50, "description": "Preferred default vibe" },
+        "favoriteCategories": { "type": "array", "description": "List of favorite category slugs" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName"]
+    },
+    "SavedPlace": {
+      "title": "SavedPlace",
+      "description": "A saved venue or event curated by the user into Guardados.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "placeId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 150 },
+        "category": { "type": "string", "maxLength": 50 },
+        "address": { "type": "string", "maxLength": 200 },
+        "neighborhood": { "type": "string", "maxLength": 100 },
+        "rating": { "type": "number" },
+        "priceLevel": { "type": "string", "maxLength": 10 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "customTag": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "placeId", "title", "category"]
+    },
+    "UserReview": {
+      "title": "UserReview",
+      "description": "Customer rating and review for an establishment.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string", "maxLength": 100 },
+        "userAvatar": { "type": "string", "maxLength": 500 },
+        "placeId": { "type": "string", "maxLength": 128 },
+        "rating": { "type": "number" },
+        "comment": { "type": "string", "maxLength": 1000 },
+        "vibeTag": { "type": "string", "maxLength": 50 },
+        "date": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "placeId", "rating", "comment"]
+    },
+    "OutingPlan": {
+      "title": "OutingPlan",
+      "description": "An interactive decision plan ('Onde vamos hoje ou amanhã').",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "when": { "type": "string", "maxLength": 50 },
+        "withWhom": { "type": "string", "maxLength": 50 },
+        "vibe": { "type": "string", "maxLength": 50 },
+        "chosenPlaceId": { "type": "string", "maxLength": 128 },
+        "chosenPlaceName": { "type": "string", "maxLength": 150 },
+        "status": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "when", "withWhom", "vibe"]
+    },
+    "UserVisit": {
+      "title": "UserVisit",
+      "description": "User check-in and visit record for a venue.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "placeId": { "type": "string", "maxLength": 128 },
+        "placeTitle": { "type": "string", "maxLength": 150 },
+        "placeCategory": { "type": "string", "maxLength": 100 },
+        "placeAddress": { "type": "string", "maxLength": 200 },
+        "placeImageUrl": { "type": "string", "maxLength": 500 },
+        "visitedAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "vibe": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "placeId", "placeTitle"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Exclusive partner merchant coupon offering discount and QR Code redemption.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "placeId": { "type": "string", "maxLength": 128 },
+        "placeTitle": { "type": "string", "maxLength": 150 },
+        "code": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 150 },
+        "discount": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 500 },
+        "minSpend": { "type": "string", "maxLength": 50 },
+        "validUntil": { "type": "string", "maxLength": 100 },
+        "partnerTier": { "type": "string", "enum": ["exclusive", "featured", "vip"] },
+        "terms": { "type": "string", "maxLength": 500 },
+        "qrPayload": { "type": "string", "maxLength": 500 },
+        "claimCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "title", "discount"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profiles"
+    },
+    "/saved_places/{savedPlaceId}": {
+      "schema": { "$ref": "#/entities/SavedPlace" },
+      "description": "Places saved to favorites by users"
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/UserReview" },
+      "description": "Public community reviews and recommendations"
+    },
+    "/places/{placeId}/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/UserReview" },
+      "description": "Sub-collection of user reviews and short tips under each specific place"
+    },
+    "/outing_plans/{planId}": {
+      "schema": { "$ref": "#/entities/OutingPlan" },
+      "description": "User decision sessions for today or tomorrow outings"
+    },
+    "/visitas/{visitId}": {
+      "schema": { "$ref": "#/entities/UserVisit" },
+      "description": "User check-ins and visit history in venues"
+    },
+    "/cupons/{cupomId}": {
+      "schema": { "$ref": "#/entities/Coupon" },
+      "description": "Exclusive merchant partner discount coupons"
+    },
+    "/Cupons/{cupomId}": {
+      "schema": { "$ref": "#/entities/Coupon" },
+      "description": "Alias collection for partner discount coupons"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "vamo.AI - O melhor da cidade, pra agora",
+  "description": "App inteligente e fluido de indicação de lugares, restaurantes, bares, eventos e barbearias baseado em geolocalização em tempo real, vibe do momento e decisão em 3 toques com Firebase e Google Maps.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR" style="background-color: #14102E; margin: 0; padding: 0;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>vamo.AI - O melhor da cidade, pra agora</title>
+    <meta name="description" content="App inteligente e fluido de indicação de lugares, restaurantes, bares, eventos e barbearias baseado em geolocalização em tempo real, vibe do momento e decisão em 3 toques com Firebase e Google Maps." />
+    <meta property="og:title" content="vamo.AI - O melhor da cidade, pra agora" />
+    <meta property="og:description" content="App inteligente e fluido de indicação de lugares, restaurantes, bares, eventos e barbearias baseado em geolocalização em tempo real, vibe do momento e decisão em 3 toques." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#14102E" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..900;1,9..40,300..900&family=Unbounded:wght@300..900&display=swap" rel="stylesheet">
+    <style>
+      html, body {
+        background-color: #14102E;
+        color: #FFFFFF;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        width: 100%;
+        overflow-x: hidden;
+      }
+      #root {
+        background-color: #14102E;
+        min-height: 100vh;
+        width: 100%;
+      }
+      .initial-splash {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        width: 100%;
+        background-color: #14102E;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #ffffff;
+      }
+      .initial-splash-logo {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 16px;
+      }
+      .initial-splash-title {
+        font-size: 26px;
+        font-weight: 900;
+        letter-spacing: -0.5px;
+      }
+      .initial-splash-title span.dot {
+        color: #FF3D7F;
+      }
+      .initial-splash-title span.ai {
+        color: #D4FF3A;
+      }
+      .initial-splash-sub {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.6);
+        margin-top: 6px;
+      }
+    </style>
+  </head>
+  <body class="bg-[#14102E] text-white antialiased overflow-x-hidden selection:bg-[#D4FF3A] selection:text-[#14102E]">
+    <div id="root">
+      <div class="initial-splash">
+        <svg class="initial-splash-logo" viewBox="0 0 100 100" fill="none">
+          <defs>
+            <linearGradient id="initPinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#6A4CFF" />
+              <stop offset="50%" stop-color="#A238FF" />
+              <stop offset="100%" stop-color="#FF3D7F" />
+            </linearGradient>
+          </defs>
+          <path d="M50 94C50 94 84 62 84 40C84 21.2223 68.7777 6 50 6C31.2223 6 16 21.2223 16 40C16 62 50 94 50 94Z" fill="url(#initPinGrad)" />
+          <path d="M42 26L68 40L42 54V26Z" fill="#D4FF3A" />
+        </svg>
+        <div class="initial-splash-title">
+          vamo<span class="dot">.</span><span class="ai">AI</span>
+        </div>
+        <div class="initial-splash-sub">
+          O melhor da cidade, pra agora.
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
