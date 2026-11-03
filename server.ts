@@ -9,9 +9,12 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function getMapsApiKey(): string {
+  return process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || '';
+}
+
 const app = express();
-// AI Studio dev server runs on port 3000; proxy listens on port 8080
-const port = 3000;
+const port = Number(process.env.PORT || 3000);
 
 // Enable larger JSON payloads for audio recording base64
 app.use(express.json({ limit: '25mb' }));
@@ -507,7 +510,7 @@ app.post('/api/chat-recommendations', async (req, res) => {
     return res.status(400).json({ error: 'messages array is required' });
   }
 
-  const mapsApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyD8UE8LdHavPMAdIRBtng8hJ-k4ttk_jew';
+  const mapsApiKey = getMapsApiKey();
   const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user')?.content || '';
 
   try {
@@ -961,7 +964,7 @@ app.post('/api/reverse-geocode', async (req, res) => {
       return res.status(400).json({ error: 'lat and lng are required' });
     }
 
-    const mapsApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyD8UE8LdHavPMAdIRBtng8hJ-k4ttk_jew';
+    const mapsApiKey = getMapsApiKey();
     const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${mapsApiKey}&language=pt-BR`;
 
     try {
@@ -1053,7 +1056,7 @@ app.post('/api/itinerary-3-stops', async (req, res) => {
 
     let candidatePlaces = Array.isArray(places) && places.length >= 3 ? places : [];
     if (candidatePlaces.length < 3) {
-      const mapsApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyD8UE8LdHavPMAdIRBtng8hJ-k4ttk_jew';
+      const mapsApiKey = getMapsApiKey();
       const fetched = await fetchRealGooglePlacesByQuery(`bares restaurantes cafés ${city}`, Number(lat), Number(lng), 7000, 10, mapsApiKey);
       candidatePlaces = fetched.map((gp) => transformGooglePlaceToItem(gp, Number(lat), Number(lng), mapsApiKey));
     }
@@ -1208,7 +1211,7 @@ app.get('/api/maps/photo', async (req, res) => {
   if (!name || typeof name !== 'string') {
     return res.status(400).send('Photo name required');
   }
-  const mapsApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyD8UE8LdHavPMAdIRBtng8hJ-k4ttk_jew';
+  const mapsApiKey = getMapsApiKey();
   const targetUrl = `https://places.googleapis.com/v1/${name}/media?maxHeightPx=${maxHeight}&maxWidthPx=${maxWidth}&key=${mapsApiKey}&solution_id=gmp_mcp_codeassist_v1_aistudio`;
   return res.redirect(targetUrl);
 });
@@ -1229,7 +1232,7 @@ app.post('/api/places/search', async (req, res) => {
     placeType,
   } = req.body || {};
 
-  const mapsApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyD8UE8LdHavPMAdIRBtng8hJ-k4ttk_jew';
+  const mapsApiKey = getMapsApiKey();
 
   const categoryTypeMap: Record<string, string[]> = {
     todos: ['restaurant', 'bar', 'cafe', 'bakery', 'night_club', 'barber_shop'],
@@ -1495,7 +1498,7 @@ app.post('/api/places/search', async (req, res) => {
 // 6. Real Google Maps Places API (New) Nearby Suggestion for Moments (with alternation)
 app.post('/api/places/nearby-recommendation', async (req, res) => {
   const { lat = -23.5651, lng = -46.6672, timeOfDay = 'noite' } = req.body || {};
-  const mapsApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyD8UE8LdHavPMAdIRBtng8hJ-k4ttk_jew';
+  const mapsApiKey = getMapsApiKey();
 
   let includedTypes = ['restaurant', 'bar'];
   if (timeOfDay === 'manha') {
@@ -1568,8 +1571,18 @@ app.post('/api/places/nearby-recommendation', async (req, res) => {
   }
 });
 
-// Dev and Prod Vite server mounting
-async function startServer() {
+function mountStaticFrontend() {
+  const distPath = path.resolve(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+async function startLocalServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer } = await import('vite');
     const vite = await createServer({
@@ -1578,15 +1591,18 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist/index.html'));
-    });
+    mountStaticFrontend();
   }
 
-  app.listen(Number(port), '0.0.0.0', () => {
+  app.listen(port, '0.0.0.0', () => {
     console.log(`Server listening on port ${port}`);
   });
 }
 
-startServer();
+if (process.env.VERCEL) {
+  mountStaticFrontend();
+} else {
+  startLocalServer();
+}
+
+export default app;

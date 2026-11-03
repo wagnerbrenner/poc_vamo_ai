@@ -1,0 +1,9 @@
+{
+  "buildCommand": "vite build",
+  "functions": {
+    "server.ts": {
+      "includeFiles": "dist/**",
+      "maxDuration": 60
+    }
+  }
+}
