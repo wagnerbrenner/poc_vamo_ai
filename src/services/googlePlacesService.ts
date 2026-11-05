@@ -1,4 +1,4 @@
-import { PlaceItem, CategorySlug } from '../types';
+import { PlaceItem, CategorySlug, ReviewItem } from '../types';
 import { INITIAL_PLACES } from '../data/mockPlaces';
 
 export type RankByPreference = 'prominence' | 'distance';
@@ -187,6 +187,101 @@ class GooglePlacesService {
     }
     return [];
   }
+  /**
+   * Generates a high quality photo URL for a given Google Places photo reference or name
+   */
+  getPhotoUrl(photoNameOrRef: string, maxWidth = 1400, maxHeight = 900): string {
+    if (!photoNameOrRef) return '';
+    if (photoNameOrRef.startsWith('http')) return photoNameOrRef;
+    if (photoNameOrRef.startsWith('/api/maps/photo')) return photoNameOrRef;
+    return `/api/maps/photo?name=${encodeURIComponent(photoNameOrRef)}&maxWidth=${maxWidth}&maxHeight=${maxHeight}`;
+  }
+
+  /**
+   * Dynamically fetch high-resolution photos for a place using Google Places Photo API
+   */
+  async fetchDynamicPlacePhotos(
+    placeId: string,
+    photoNames?: string[]
+  ): Promise<{
+    photos: string[];
+    categorizedPhotos: { all: string[]; food: string[]; ambience: string[]; menu: string[] };
+    source: string;
+  }> {
+    try {
+      const response = await fetch('/api/places/photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placeId, photoNames }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Array.isArray(data.photos) && data.photos.length > 0) {
+          return {
+            photos: data.photos,
+            categorizedPhotos: data.categorizedPhotos || {
+              all: data.photos,
+              food: data.photos.slice(0, 3),
+              ambience: data.photos.slice(0, 3),
+              menu: data.photos.slice(0, 2),
+            },
+            source: data.source || 'google_places_photo_api',
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('googlePlacesService.fetchDynamicPlacePhotos error:', err);
+    }
+
+    return {
+      photos: [],
+      categorizedPhotos: { all: [], food: [], ambience: [], menu: [] },
+      source: 'fallback',
+    };
+  }
+
+  /**
+   * Dynamically fetch real Google Maps reviews for an establishment
+   */
+  async fetchPlaceReviews(
+    placeId: string,
+    placeTitle?: string,
+    city?: string
+  ): Promise<{
+    reviews: ReviewItem[];
+    totalRating?: number;
+    userRatingCount?: number;
+    source: string;
+    isRealGoogle: boolean;
+  }> {
+    try {
+      const url = `/api/places/${encodeURIComponent(placeId)}/reviews?title=${encodeURIComponent(placeTitle || '')}&city=${encodeURIComponent(city || '')}`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Array.isArray(data.reviews) && data.reviews.length > 0) {
+          return {
+            reviews: data.reviews,
+            totalRating: data.totalRating,
+            userRatingCount: data.userRatingCount,
+            source: data.source || 'google_places_api_new',
+            isRealGoogle: !!data.isRealGoogle,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('googlePlacesService.fetchPlaceReviews error:', err);
+    }
+
+    return {
+      reviews: [],
+      source: 'fallback',
+      isRealGoogle: false,
+    };
+  }
 }
 
 export const googlePlacesService = new GooglePlacesService();
+
+

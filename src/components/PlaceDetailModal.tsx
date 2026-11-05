@@ -4,7 +4,7 @@ import {
   ArrowLeft, Heart, Star, Navigation, Phone, MessageCircle, 
   MapPin, Clock, Calendar, Check, Share2, Plus, Sparkles, Send, ShieldCheck,
   ShoppingBag, ExternalLink, MessageSquare, CheckCircle2, Utensils, Camera, BookOpen,
-  Copy, Tag, Building2
+  Copy, Tag, Building2, ChevronLeft, ChevronRight, Ticket, Dumbbell
 } from 'lucide-react';
 import { PlaceItem, ReviewItem } from '../types';
 import { useLocation } from '../context/LocationContext';
@@ -15,6 +15,7 @@ import {
   recordUserVisit 
 } from '../firebase/firestoreService';
 import { offlineCacheService } from '../services/offlineCacheService';
+import { googlePlacesService } from '../services/googlePlacesService';
 import { sound, haptic } from '../utils/audioHaptics';
 import { ExpertTipsSection } from './ExpertTipsSection';
 import { WebContentSection } from './WebContentSection';
@@ -59,6 +60,60 @@ export const PlaceDetailModal: React.FC<PlaceDetailModalProps> = ({
   const [checkInSuccessMsg, setCheckInSuccessMsg] = useState<string | null>(null);
   const [showCheckInNoteInput, setShowCheckInNoteInput] = useState(false);
   const [checkInNote, setCheckInNote] = useState('');
+  const [dynamicPhotos, setDynamicPhotos] = useState<string[]>([]);
+  const [dynamicCategorizedPhotos, setDynamicCategorizedPhotos] = useState<{ food: string[]; ambience: string[]; menu: string[]; all: string[] } | null>(null);
+  const [isLoadingPhotos, setIsLoadingPhotos] = useState<boolean>(false);
+  const [googleReviews, setGoogleReviews] = useState<ReviewItem[]>([]);
+  const [isLoadingGoogleReviews, setIsLoadingGoogleReviews] = useState<boolean>(false);
+
+  // Dynamically fetch and enhance high-resolution photos using Google Places Photo API
+  useEffect(() => {
+    if (!place?.id) return;
+    setDynamicPhotos(place.gallery && place.gallery.length > 0 ? place.gallery : [place.imageUrl]);
+    setDynamicCategorizedPhotos(place.categorizedPhotos || null);
+    setActiveImageIndex(0);
+
+    // If it's a real Google Place or has photo references, fetch fresh high-res photos
+    if (place.rawPhotoNames?.length || place.isRealGoogleMaps || place.id.startsWith('gmp-') || place.id.startsWith('ChIJ')) {
+      setIsLoadingPhotos(true);
+      googlePlacesService
+        .fetchDynamicPlacePhotos(place.id, place.rawPhotoNames)
+        .then((res) => {
+          if (res && res.photos && res.photos.length > 0) {
+            setDynamicPhotos(res.photos);
+            setDynamicCategorizedPhotos(res.categorizedPhotos);
+          }
+        })
+        .catch((err) => {
+          console.warn('Dynamic photo fetch error:', err);
+        })
+        .finally(() => {
+          setIsLoadingPhotos(false);
+        });
+    }
+  }, [place?.id, place?.title]);
+
+  // Dynamically fetch real Google Maps reviews for the establishment
+  useEffect(() => {
+    if (!place?.id) return;
+    setIsLoadingGoogleReviews(true);
+    googlePlacesService
+      .fetchPlaceReviews(place.id, place.title, place.city)
+      .then((res) => {
+        if (res && res.reviews && res.reviews.length > 0) {
+          setGoogleReviews(res.reviews);
+        } else {
+          setGoogleReviews(place.reviews || []);
+        }
+      })
+      .catch((err) => {
+        console.warn('Google reviews fetch error:', err);
+        setGoogleReviews(place.reviews || []);
+      })
+      .finally(() => {
+        setIsLoadingGoogleReviews(false);
+      });
+  }, [place?.id, place?.title, place?.city]);
 
   // Check if place is already recorded as visited
   useEffect(() => {
@@ -145,14 +200,14 @@ export const PlaceDetailModal: React.FC<PlaceDetailModalProps> = ({
   const dist = calculateDistance(place.lat, place.lng);
   
   // Combine local in-memory reviews, real Firestore sub-collection reviews, and Google Maps reviews (deduped by id)
-  const combined = [...localReviews, ...firestoreReviews, ...place.reviews];
+  const combined = [...localReviews, ...firestoreReviews, ...googleReviews, ...(place.reviews || [])];
   const allReviews = combined.filter((rev, idx, arr) => arr.findIndex(r => r.id === rev.id) === idx);
 
-  // Categorized Photos resolution
-  const allPhotos = place.gallery && place.gallery.length > 0 ? place.gallery : [place.imageUrl];
-  const foodPhotos = place.categorizedPhotos?.food?.length ? place.categorizedPhotos.food : allPhotos.slice(0, 3);
-  const ambiencePhotos = place.categorizedPhotos?.ambience?.length ? place.categorizedPhotos.ambience : allPhotos.slice(0, 3);
-  const menuPhotos = place.categorizedPhotos?.menu?.length ? place.categorizedPhotos.menu : allPhotos.slice(0, 2);
+  // Categorized Photos resolution with dynamic Google Places Photo API
+  const allPhotos = dynamicPhotos.length > 0 ? dynamicPhotos : (place.gallery && place.gallery.length > 0 ? place.gallery : [place.imageUrl]);
+  const foodPhotos = dynamicCategorizedPhotos?.food?.length ? dynamicCategorizedPhotos.food : (place.categorizedPhotos?.food?.length ? place.categorizedPhotos.food : allPhotos.slice(0, 3));
+  const ambiencePhotos = dynamicCategorizedPhotos?.ambience?.length ? dynamicCategorizedPhotos.ambience : (place.categorizedPhotos?.ambience?.length ? place.categorizedPhotos.ambience : allPhotos.slice(0, 3));
+  const menuPhotos = dynamicCategorizedPhotos?.menu?.length ? dynamicCategorizedPhotos.menu : (place.categorizedPhotos?.menu?.length ? place.categorizedPhotos.menu : allPhotos.slice(0, 2));
 
   const activePhotos = photoCategory === 'food' ? foodPhotos
     : photoCategory === 'ambience' ? ambiencePhotos
@@ -309,7 +364,14 @@ export const PlaceDetailModal: React.FC<PlaceDetailModalProps> = ({
           </div>
 
           {/* Gallery Carousel */}
-          <div className="relative h-64 sm:h-72 w-full bg-black/40 overflow-hidden">
+          <div className="relative h-64 sm:h-72 w-full bg-black/40 overflow-hidden group">
+            {/* Google Places Photo API High-Res Indicator Badge */}
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-[10px] text-white/90 font-bold">
+              <Camera className="w-3 h-3 text-[#D4FF3A]" />
+              <span>{isLoadingPhotos ? 'Carregando fotos HD...' : `${activePhotos.length} fotos Google Places`}</span>
+              {isLoadingPhotos && <span className="w-1.5 h-1.5 rounded-full bg-[#D4FF3A] animate-ping" />}
+            </div>
+
             <motion.img
               layoutId={`place-image-${place.id}`}
               key={activePhotos[activeImageIndex] || place.imageUrl}
@@ -321,6 +383,36 @@ export const PlaceDetailModal: React.FC<PlaceDetailModalProps> = ({
               className="w-full h-full object-cover transition-all duration-300"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#14102E] via-transparent to-black/30 pointer-events-none" />
+
+            {/* Left / Right Carousel Controls */}
+            {activePhotos.length > 1 && (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sound.tap();
+                    haptic.light();
+                    setActiveImageIndex((prev) => (prev > 0 ? prev - 1 : activePhotos.length - 1));
+                  }}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center border border-white/20 z-10 active:scale-95 transition-all cursor-pointer opacity-80 hover:opacity-100"
+                  title="Foto anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sound.tap();
+                    haptic.light();
+                    setActiveImageIndex((prev) => (prev < activePhotos.length - 1 ? prev + 1 : 0));
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center border border-white/20 z-10 active:scale-95 transition-all cursor-pointer opacity-80 hover:opacity-100"
+                  title="Próxima foto"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
 
             {/* Thumbnail Dots */}
             {activePhotos.length > 1 && (
@@ -421,6 +513,136 @@ export const PlaceDetailModal: React.FC<PlaceDetailModalProps> = ({
                 <span className="inline-block mt-2 text-[10px] font-bold text-[#14102E] bg-[#D4FF3A] px-2.5 py-0.5 rounded-full">
                   {place.currentEvent.time}
                 </span>
+              </div>
+            )}
+
+            {/* Ingressos & Bilheteria Oficial (Sympla, Ingresso Digital, Eventim, Bilheteria Express) */}
+            {(place.category === 'eventos' ||
+              place.culturalType ||
+              place.ticketUrls ||
+              place.subCategory.toLowerCase().includes('teatro') ||
+              place.subCategory.toLowerCase().includes('show') ||
+              place.subCategory.toLowerCase().includes('musical') ||
+              place.subCategory.toLowerCase().includes('peça')) && (
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-[#FF3D7F]/20 via-[#6A4CFF]/20 to-black/40 border border-[#FF3D7F]/30 shadow-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Ticket className="w-4 h-4 text-[#FF3D7F]" />
+                    <span className="font-unbounded font-black text-xs text-white">
+                      Ingressos Oficiais & Bilheteria
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-[#D4FF3A] px-2 py-0.5 rounded-full bg-[#D4FF3A]/15 border border-[#D4FF3A]/30">
+                    Disponíveis
+                  </span>
+                </div>
+                <p className="text-[11px] text-white/80 mb-3 font-sans">
+                  Garanta sua entrada antecipada nas principais ticketeiras parceiras sem filas:
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Sympla */}
+                  <a
+                    href={
+                      place.ticketUrls?.sympla ||
+                      `https://www.sympla.com.br/eventos?s=${encodeURIComponent(place.title + ' ' + place.city)}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 rounded-xl bg-gradient-to-r from-[#0060F4]/30 to-[#0040B0]/40 hover:from-[#0060F4]/50 hover:to-[#0040B0]/60 border border-[#0060F4]/50 flex items-center justify-between text-white transition-all cursor-pointer group active:scale-95"
+                  >
+                    <div className="flex flex-col text-left">
+                      <span className="font-unbounded font-black text-xs text-[#5293FF]">Sympla</span>
+                      <span className="text-[9px] text-white/60">Ver ingressos</span>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-white/70 group-hover:text-white" />
+                  </a>
+
+                  {/* Ingresso Digital */}
+                  <a
+                    href={
+                      place.ticketUrls?.ingressoDigital ||
+                      `https://www.ingressodigital.com/pesquisa?busca=${encodeURIComponent(place.title)}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 rounded-xl bg-gradient-to-r from-[#FF007A]/25 to-[#990049]/35 hover:from-[#FF007A]/45 hover:to-[#990049]/55 border border-[#FF007A]/40 flex items-center justify-between text-white transition-all cursor-pointer group active:scale-95"
+                  >
+                    <div className="flex flex-col text-left">
+                      <span className="font-unbounded font-black text-xs text-[#FF66B2]">Ingresso Digital</span>
+                      <span className="text-[9px] text-white/60">Ver sessões</span>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-white/70 group-hover:text-white" />
+                  </a>
+
+                  {/* Eventim */}
+                  <a
+                    href={
+                      place.ticketUrls?.eventim ||
+                      `https://www.eventim.com.br/search/?searchterm=${encodeURIComponent(place.title)}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 rounded-xl bg-gradient-to-r from-[#FFCC00]/20 to-[#B28F00]/30 hover:from-[#FFCC00]/35 hover:to-[#B28F00]/45 border border-[#FFCC00]/40 flex items-center justify-between text-white transition-all cursor-pointer group active:scale-95"
+                  >
+                    <div className="flex flex-col text-left">
+                      <span className="font-unbounded font-black text-xs text-[#FFD633]">Eventim</span>
+                      <span className="text-[9px] text-white/60">Shows & Festivais</span>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-white/70 group-hover:text-white" />
+                  </a>
+
+                  {/* Bilheteria Express */}
+                  <a
+                    href={
+                      place.ticketUrls?.bilheteriaExpress ||
+                      `https://www.bilheteriaexpress.com.br/catalogsearch/result/?q=${encodeURIComponent(place.title)}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 rounded-xl bg-gradient-to-r from-[#00D084]/20 to-[#008A57]/30 hover:from-[#00D084]/35 hover:to-[#008A57]/45 border border-[#00D084]/40 flex items-center justify-between text-white transition-all cursor-pointer group active:scale-95"
+                  >
+                    <div className="flex flex-col text-left">
+                      <span className="font-unbounded font-black text-xs text-[#40E0A0]">Bilheteria Express</span>
+                      <span className="text-[9px] text-white/60">Teatro & Stand-up</span>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-white/70 group-hover:text-white" />
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Cuidado Pessoal / Bem-Estar (Barbearia, Salão de Beleza, Academia & Fitness) */}
+            {(place.category === 'barbearias' || place.wellnessType) && (
+              <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-[#D4FF3A]/20 flex items-center justify-center text-[#D4FF3A]">
+                    {place.wellnessType === 'fitness' ? (
+                      <Dumbbell className="w-5 h-5" />
+                    ) : place.wellnessType === 'salao' ? (
+                      <Sparkles className="w-5 h-5" />
+                    ) : (
+                      <Building2 className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <span className="font-unbounded font-bold text-xs text-white block">
+                      {place.wellnessType === 'fitness'
+                        ? 'Treino & Passe Livre Disponível'
+                        : place.wellnessType === 'salao'
+                        ? 'Salão & Estética com Atendimento VIP'
+                        : 'Barbearia com Cadeira Livre Agora'}
+                    </span>
+                    <span className="text-[10px] text-white/60">
+                      Reserve horário ou chegue direto pelo app
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleWhatsApp}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#D4FF3A] text-[10px] font-unbounded font-bold transition-all cursor-pointer"
+                >
+                  Agendar
+                </button>
               </div>
             )}
 
@@ -632,12 +854,100 @@ export const PlaceDetailModal: React.FC<PlaceDetailModalProps> = ({
               </div>
             </div>
 
+            {/* Google Places API Real Reviews (Avaliações oficiais do Google Maps) */}
+            <div className="pt-2">
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-[#1b153d] to-[#14102E] border border-white/10 space-y-3 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#4285F4]/20 via-[#34A853]/20 to-[#FBBC05]/20 border border-white/15 flex items-center justify-center">
+                      <Star className="w-4 h-4 fill-[#D4FF3A] text-[#D4FF3A]" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="font-unbounded font-black text-xs sm:text-sm text-white">
+                          Avaliações do Google Maps
+                        </h3>
+                        <span className="text-[10px] font-sans font-bold text-[#D4FF3A] px-2 py-0.2 rounded-full bg-[#D4FF3A]/10 border border-[#D4FF3A]/25">
+                          Oficial
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-white/60">
+                        Nota {place.rating.toFixed(1)} · Baseado em opiniões verificadas
+                      </span>
+                    </div>
+                  </div>
+
+                  {place.googleMapsUri && (
+                    <a
+                      href={place.googleMapsUri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-[#D4FF3A] hover:underline flex items-center gap-1 font-bold shrink-0 active:scale-95 transition-transform"
+                    >
+                      <span>Abrir Google</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+
+                {isLoadingGoogleReviews ? (
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-white/60 text-xs">
+                    <div className="w-4 h-4 border-2 border-[#D4FF3A] border-t-transparent rounded-full animate-spin" />
+                    <span>Carregando comentários reais do Google Places...</span>
+                  </div>
+                ) : googleReviews.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {googleReviews.slice(0, 4).map((rev) => (
+                      <div
+                        key={rev.id}
+                        className="p-3.5 rounded-xl bg-white/5 hover:bg-white/[0.08] border border-white/10 transition-colors space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={rev.userAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}
+                              alt={rev.userName}
+                              className="w-7 h-7 rounded-full object-cover border border-white/20"
+                            />
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-xs text-white">
+                                  {rev.userName}
+                                </span>
+                                <span className="text-[9px] text-[#D4FF3A] bg-[#D4FF3A]/15 px-1.5 py-0.2 rounded font-medium">
+                                  Google Review
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-white/50">{rev.date}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 bg-black/40 px-2 py-0.5 rounded-full border border-white/10">
+                            <Star className="w-3 h-3 fill-[#D4FF3A] text-[#D4FF3A]" />
+                            <span className="text-xs font-bold text-white">{rev.rating}</span>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-white/85 font-sans leading-relaxed">
+                          "{rev.comment}"
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-white/60 italic text-center py-2">
+                    Nenhum comentário público recente retornado para este local.
+                  </p>
+                )}
+              </div>
+            </div>
+
             {/* Customer Reviews Section (Requested by user: avaliações reais de outros clientes) */}
             <div className="pt-2">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h3 className="font-unbounded font-black text-lg text-white">
-                    Avaliações reais
+                    Avaliações da comunidade vamo.AI
                   </h3>
                   <span className="text-xs text-white/60">
                     Opiniões de quem já foi hoje e nos últimos dias

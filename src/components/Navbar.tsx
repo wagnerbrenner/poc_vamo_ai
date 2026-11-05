@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, User, Settings, Navigation2, LogIn } from 'lucide-react';
+import { MapPin, User, Settings, Navigation2, LogIn, Smartphone } from 'lucide-react';
 import { VamoLogo } from './VamoLogo';
 import { useLocation } from '../context/LocationContext';
 import { useAuth } from '../firebase/authContext';
@@ -9,12 +9,14 @@ interface NavbarProps {
   onOpenLocationModal: () => void;
   onOpenProfileModal: () => void;
   onOpenSettingsModal: () => void;
+  onOpenInstallModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenLocationModal,
   onOpenProfileModal,
   onOpenSettingsModal,
+  onOpenInstallModal,
 }) => {
   const { currentCity, isGpsActive } = useLocation();
   const { user, profile } = useAuth();
@@ -40,6 +42,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Right User & Settings Actions */}
       <div className="flex items-center gap-1.5">
+        {onOpenInstallModal && (
+          <button
+            onClick={() => {
+              sound.tap();
+              onOpenInstallModal();
+            }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#D4FF3A]/15 hover:bg-[#D4FF3A]/25 border border-[#D4FF3A]/30 text-[#D4FF3A] text-[10px] font-unbounded font-bold transition-all cursor-pointer active:scale-95"
+            title="Instalar vamo.AI no celular (App)"
+          >
+            <Smartphone className="w-3 h-3 text-[#D4FF3A]" />
+            <span className="hidden sm:inline">App</span>
+          </button>
+        )}
+
         <button
           onClick={() => {
             sound.tap();

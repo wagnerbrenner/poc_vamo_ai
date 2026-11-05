@@ -7,12 +7,14 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onTestWeatherAlert?: () => void;
+  onOpenInstallModal?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   onTestWeatherAlert,
+  onOpenInstallModal,
 }) => {
   const { theme, setTheme, isAuto, setIsAuto } = useTheme();
   const { isBatterySaver, toggleBatterySaver } = useBatterySaver();
@@ -40,6 +42,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Content */}
         <div className="py-4 space-y-4 overflow-y-auto no-scrollbar">
+          {/* Instalar App no Celular */}
+          {onOpenInstallModal && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-[#D4FF3A]/15 to-[#6A4CFF]/20 border border-[#D4FF3A]/30 flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#D4FF3A] text-[#14102E] flex items-center justify-center font-bold">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="font-unbounded font-black text-xs text-white block">
+                    Instalar Aplicativo (App)
+                  </span>
+                  <span className="text-[11px] text-white/70 font-sans">
+                    Fixar na tela de início do seu celular
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  sound.tap();
+                  onOpenInstallModal();
+                }}
+                className="px-3.5 py-2 rounded-xl bg-[#D4FF3A] hover:bg-[#c6f32e] text-[#14102E] font-unbounded font-black text-xs active:scale-95 transition-all cursor-pointer shadow-md"
+              >
+                Instalar
+              </button>
+            </div>
+          )}
           {/* Modo Economia de Energia */}
           <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
             <div className="flex items-center gap-3">

@@ -27,6 +27,8 @@ export interface ReviewItem {
   vibeTag?: string;
   date: string;
   createdAt?: string;
+  isRealGoogle?: boolean;
+  authorUri?: string;
 }
 
 export interface PlaceItem {
@@ -73,6 +75,15 @@ export interface PlaceItem {
     ambience: string[];
     menu: string[];
     all: string[];
+  };
+  rawPhotoNames?: string[];
+  wellnessType?: 'barbearia' | 'salao' | 'fitness' | 'spa';
+  culturalType?: 'teatro' | 'show' | 'standup' | 'musical' | 'exposicao';
+  ticketUrls?: {
+    sympla?: string;
+    ingressoDigital?: string;
+    eventim?: string;
+    bilheteriaExpress?: string;
   };
 }
 

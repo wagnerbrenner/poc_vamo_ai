@@ -59,8 +59,62 @@ export const AIChatScreen: React.FC<AIChatScreenProps> = ({
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Audio Recording with Microphone
-  const startRecording = async () => {
+  // Web Speech API Native Browser Support
+  const handleStartVoice = () => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      sound.tap();
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-BR';
+        recognition.continuous = false;
+        recognition.interimResults = true;
+
+        recognition.onstart = () => {
+          setIsRecording(true);
+          setRecordingSeconds(0);
+        };
+
+        recognition.onresult = (e: any) => {
+          let text = '';
+          for (let i = e.resultIndex; i < e.results.length; ++i) {
+            text += e.results[i][0].transcript;
+          }
+          if (text) {
+            setInputPrompt(text);
+          }
+        };
+
+        recognition.onend = () => {
+          setIsRecording(false);
+          // Auto-send if there's text
+          setInputPrompt((curr) => {
+            if (curr.trim().length > 3) {
+              handleSendMessage(curr);
+            }
+            return curr;
+          });
+        };
+
+        recognition.onerror = () => {
+          setIsRecording(false);
+          startRecordingFallback();
+        };
+
+        recognition.start();
+        return;
+      } catch (e) {
+        startRecordingFallback();
+      }
+    } else {
+      startRecordingFallback();
+    }
+  };
+
+  // Audio Recording with MediaRecorder Fallback
+  const startRecordingFallback = async () => {
     try {
       sound.tap();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -76,7 +130,7 @@ export const AIChatScreen: React.FC<AIChatScreenProps> = ({
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
 
         // Convert blob to base64
         const reader = new FileReader();
@@ -93,7 +147,6 @@ export const AIChatScreen: React.FC<AIChatScreenProps> = ({
       setIsRecording(true);
       setRecordingSeconds(0);
 
-      // Timer
       const interval = setInterval(() => {
         setRecordingSeconds((prev) => {
           if (prev >= 20) {
@@ -106,7 +159,6 @@ export const AIChatScreen: React.FC<AIChatScreenProps> = ({
       }, 1000);
     } catch (err) {
       console.warn('Microphone permission denied or not available:', err);
-      alert('Por favor, autorize o microfone para falar com o Amigo Local!');
       setIsRecording(false);
     }
   };
@@ -132,7 +184,6 @@ export const AIChatScreen: React.FC<AIChatScreenProps> = ({
       const transcription = data.transcription || 'Quero uma indicação de lugar legal para sair agora';
       handleSendMessage(transcription);
     } catch (err) {
-      console.error('Transcription error:', err);
       handleSendMessage('Quero um lugar bacana para sair agora em casal.');
     }
   };
@@ -422,9 +473,9 @@ export const AIChatScreen: React.FC<AIChatScreenProps> = ({
           >
             <button
               type="button"
-              onClick={startRecording}
-              className="w-10 h-10 rounded-2xl bg-white/10 hover:bg-[#FF3D7F] text-white flex items-center justify-center transition-all shrink-0 active:scale-95"
-              title="Falar por áudio (Transcrever com Gemini)"
+              onClick={handleStartVoice}
+              className="w-10 h-10 rounded-2xl bg-white/10 hover:bg-[#FF3D7F] text-white flex items-center justify-center transition-all shrink-0 active:scale-95 cursor-pointer"
+              title="Falar por voz com o Amigo Local"
             >
               <Mic className="w-4 h-4 text-[#D4FF3A]" />
             </button>

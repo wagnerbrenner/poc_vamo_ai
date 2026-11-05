@@ -1,19 +1,21 @@
 import React, { useState, useMemo } from 'react';
-import { motion } from 'motion/react';
-import { Sparkles, Compass, Bookmark, Flame, Clock, Heart, Users, MapPin, ArrowRight, Mic, MessageSquareText, Star, Navigation, Map, RefreshCw, Umbrella, Zap, Car } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Sparkles, Compass, Bookmark, Flame, Clock, Heart, Users, MapPin, 
+  ArrowRight, Mic, MessageSquareText, Star, Navigation, Map, RefreshCw, 
+  Umbrella, Zap, Car, Tag, Ticket, Dumbbell, ChevronDown, ChevronUp, Check, Play
+} from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLocation } from '../context/LocationContext';
 import { useBatterySaver } from '../context/BatterySaverContext';
-import { PlaceItem, SavedPlace, UserVisit } from '../types';
-import { MomentSuggestionCard } from './MomentSuggestionCard';
+import { PlaceItem, SavedPlace, UserVisit, CategorySlug } from '../types';
+import { CATEGORIES } from '../data/mockPlaces';
 import { WeatherBanner } from './WeatherBanner';
-import { VibeDashboard } from './VibeDashboard';
 import { PriceFilterBar, PriceLevelOption } from './PriceFilterBar';
-import { PersonalizedCurationSection } from './PersonalizedCurationSection';
 import { sound, haptic } from '../utils/audioHaptics';
 
 interface HomeScreenProps {
-  onStartThreeTouches: () => void;
+  onStartThreeTouches: (initialVibe?: string) => void;
   onExplore: () => void;
   onOpenSaved: () => void;
   onOpenChat: () => void;
@@ -29,6 +31,8 @@ interface HomeScreenProps {
   activeTypeName?: string | null;
   savedPlaces?: SavedPlace[];
   userVisits?: UserVisit[];
+  onOpenVoiceSearch?: () => void;
+  onOpenLocationModal?: () => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -48,17 +52,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   activeTypeName,
   savedPlaces = [],
   userVisits = [],
+  onOpenVoiceSearch,
+  onOpenLocationModal,
 }) => {
-  const { themeConfig, theme } = useTheme();
+  const { themeConfig } = useTheme();
   const { currentCity, calculateDistance, setCurrentCity, getNearbyCitiesAround100km } = useLocation();
   const { isBatterySaver, toggleBatterySaver } = useBatterySaver();
+
+  // Decision State
+  const [selectedCompanion, setSelectedCompanion] = useState<'casal' | 'amigos' | 'sozinho' | 'familia'>('casal');
+  const [selectedVibeCategory, setSelectedVibeCategory] = useState<string>('gastronomia');
+  const [showContextWidgets, setShowContextWidgets] = useState<boolean>(false);
   const [isOutdoorFiltered, setIsOutdoorFiltered] = useState<boolean>(false);
-  
-  // 2 neighbouring cities within ~100km suggested automatically for 1-touch search context switch
+
+  // Neighboring getaway cities within ~100km
   const neighborCities = useMemo(() => {
     return getNearbyCitiesAround100km();
   }, [getNearbyCitiesAround100km]);
 
+  // Feed Category Filter
+  const [feedCategory, setFeedCategory] = useState<CategorySlug | 'cupons' | 'cuidado_masculino' | 'cuidado_feminino' | 'fitness'>('todos');
+
+  // Price filter
   const [priceFilter, setPriceFilter] = useState<PriceLevelOption>(() => {
     try {
       return (localStorage.getItem('@vamo_ai:price_preference') as PriceLevelOption) || 'todos';
@@ -67,210 +82,304 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
   });
 
-  // Weather-aware filtering: deprioritizes or removes open-air venues when raining/requested
-  const filteredPlaces = isOutdoorFiltered
-    ? places.filter(
-        (p) =>
-          !p.vibes.includes('arlivre') &&
-          !p.features.some((f) => {
+  // Filtered Places for Feed
+  const filteredPlaces = useMemo(() => {
+    return places.filter((p) => {
+      // 1. Weather rain filter
+      if (isOutdoorFiltered) {
+        const isOutdoor =
+          p.vibes.includes('arlivre') ||
+          p.features.some((f) => {
             const low = f.toLowerCase();
             return low.includes('ar livre') || low.includes('área aberta') || low.includes('rooftop aberto');
-          })
-      )
-    : places;
+          });
+        if (isOutdoor) return false;
+      }
 
-  const activePlaces = filteredPlaces.length > 0 ? filteredPlaces : places;
+      // 2. Price filter
+      if (priceFilter !== 'todos' && p.priceLevel !== priceFilter) {
+        return false;
+      }
 
-  // Price level filter: applies selected price ($ to $$$$) or all
-  const priceFilteredPlaces = priceFilter === 'todos'
-    ? activePlaces
-    : activePlaces.filter((p) => p.priceLevel === priceFilter);
+      // 3. Category / Subcategory filter
+      if (feedCategory === 'cupons') {
+        return !!p.coupon;
+      }
+      if (feedCategory === 'cuidado_masculino') {
+        return p.category === 'barbearias' && (p.wellnessType === 'barbearia' || p.title.toLowerCase().includes('barber') || p.subCategory.toLowerCase().includes('barba'));
+      }
+      if (feedCategory === 'cuidado_feminino') {
+        return p.category === 'barbearias' && (p.wellnessType === 'salao' || p.title.toLowerCase().includes('beauty') || p.title.toLowerCase().includes('salão') || p.subCategory.toLowerCase().includes('cabelo'));
+      }
+      if (feedCategory === 'fitness') {
+        return p.category === 'barbearias' && (p.wellnessType === 'fitness' || p.title.toLowerCase().includes('cross') || p.title.toLowerCase().includes('academia') || p.subCategory.toLowerCase().includes('treino'));
+      }
+      if (feedCategory !== 'todos' && p.category !== feedCategory) {
+        return false;
+      }
 
-  const finalPlaces = priceFilteredPlaces.length > 0 ? priceFilteredPlaces : activePlaces;
+      return true;
+    });
+  }, [places, feedCategory, priceFilter, isOutdoorFiltered]);
+
+  const handleDecideWithCurrentSelection = () => {
+    sound.success();
+    haptic.success();
+    onQuickVibeSelect(selectedVibeCategory);
+  };
 
   return (
-    <div className={`flex-1 flex flex-col justify-between p-6 bg-gradient-to-b ${themeConfig.bgGradient} transition-all duration-700 relative overflow-y-auto no-scrollbar`}>
+    <div className={`flex-1 flex flex-col justify-start p-3.5 sm:p-5 bg-gradient-to-b ${themeConfig.bgGradient} transition-all duration-700 relative overflow-y-auto no-scrollbar space-y-3.5`}>
       {/* Ambient background glow decoration */}
-      <div className="absolute top-1/4 -right-16 w-64 h-64 bg-[#FF3D7F]/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/3 -left-16 w-64 h-64 bg-[#6A4CFF]/25 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-10 -right-20 w-64 h-64 bg-[#FF3D7F]/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-80 -left-20 w-64 h-64 bg-[#6A4CFF]/20 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Top Context Pill with Battery Saver Mode Toggle */}
-      <div className="flex items-center justify-between z-10 gap-2">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-black/30 backdrop-blur-md border border-white/10 text-[11px] text-white/80 font-medium">
-          <span className="w-2 h-2 rounded-full bg-[#D4FF3A] animate-pulse" />
-          <span>{themeConfig.label} ({themeConfig.period})</span>
-          <span className="text-white/30">•</span>
-          <span className="text-white/60">{themeConfig.keywords}</span>
+      {/* Top Header Bar: Location Badge, 100km Neighbor Pill, Mic & Eco */}
+      <div className="flex items-center justify-between z-10 gap-2 flex-wrap">
+        {/* Clickable City Switcher */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => {
+              sound.tap();
+              haptic.light();
+              onOpenLocationModal?.();
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-md border border-white/20 text-xs text-white font-medium shadow-sm transition-all cursor-pointer group active:scale-95"
+            title="Trocar cidade ou usar GPS em todo o Brasil"
+          >
+            <span className="w-2 h-2 rounded-full bg-[#D4FF3A] animate-pulse" />
+            <span className="font-unbounded font-black text-white group-hover:text-[#D4FF3A] transition-colors">{currentCity.name}</span>
+            <MapPin className="w-3 h-3 text-[#D4FF3A]" />
+          </button>
+
+          {/* Quick Neighbor City (~100km) Pill */}
+          {neighborCities.slice(0, 1).map((dest) => (
+            <button
+              key={dest.id}
+              onClick={() => {
+                sound.tap();
+                haptic.medium();
+                setCurrentCity(dest);
+              }}
+              className="px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/15 text-[10px] font-sans text-white/80 border border-white/10 transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+              title={`Trocar busca para ${dest.name} (~${dest.distanceKm}km)`}
+            >
+              <Car className="w-3 h-3 text-[#D4FF3A]" />
+              <span>{dest.name} (~{dest.distanceKm}km)</span>
+            </button>
+          ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Modo Economia de Energia Toggle */}
+        {/* Right Controls: Voice Search (Hands-free) & Battery Saver */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => {
+              sound.tap();
+              haptic.medium();
+              if (onOpenVoiceSearch) {
+                onOpenVoiceSearch();
+              } else {
+                onOpenChat();
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#D4FF3A] hover:bg-[#c6f32e] text-[#14102E] text-xs font-unbounded font-black shadow-[0_0_15px_rgba(212,255,58,0.4)] active:scale-95 transition-all cursor-pointer group"
+            title="Pesquisar por comando de voz (mãos livres)"
+          >
+            <Mic className="w-3.5 h-3.5 fill-[#14102E] group-hover:scale-110 transition-transform" />
+            <span>Falar</span>
+          </button>
+
           <button
             onClick={toggleBatterySaver}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-unbounded font-bold border transition-all cursor-pointer ${
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-unbounded font-bold border transition-all cursor-pointer ${
               isBatterySaver
-                ? 'bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-[0_0_12px_rgba(251,191,36,0.3)]'
+                ? 'bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-[0_0_10px_rgba(251,191,36,0.25)]'
                 : 'bg-white/5 text-white/60 border-white/10 hover:text-white hover:bg-white/10'
             }`}
-            title={isBatterySaver ? 'Modo Economia de Energia ATIVO (GPS e Clima em baixa taxa para poupar bateria)' : 'Ativar Modo Economia de Energia'}
+            title="Economizar Bateria (modo eco)"
           >
             <Zap className={`w-3 h-3 ${isBatterySaver ? 'fill-current text-amber-300' : ''}`} />
             <span>{isBatterySaver ? 'Eco ⚡' : 'Eco'}</span>
           </button>
-
-          <div className="flex items-center gap-1 text-[11px] text-[#FFA36C] font-semibold">
-            <Flame className="w-3.5 h-3.5 text-[#FFA36C]" />
-            <span className="hidden sm:inline">3 opções certas</span>
-          </div>
         </div>
       </div>
 
-      {/* Weather Forecast Banner (Live rain & climate recommendations) */}
-      <div className="z-10 mt-3">
-        <WeatherBanner
-          isOutdoorFiltered={isOutdoorFiltered}
-          onApplyWeatherSuggestion={(vibe, filterOutdoors) => {
-            setIsOutdoorFiltered(filterOutdoors);
-            if (vibe) {
-              onQuickVibeSelect(vibe);
-            }
-          }}
-        />
-      </div>
+      {/* =========================================================================
+          HERO DE AÇÃO RÁPIDA: DECISÃO DE 3 TOQUES & VIBES NO TOPO!
+          ========================================================================= */}
+      <div className="z-10 w-full p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-[#1b153d]/95 via-[#14102E]/90 to-black/85 border border-white/20 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+        {/* Top subtle glow */}
+        <div className="absolute top-0 right-0 w-44 h-44 bg-[#D4FF3A]/15 rounded-full blur-3xl pointer-events-none" />
 
-      {/* 1-Touch Neighbor Cities Context Switcher (<100km) */}
-      {neighborCities.length > 0 && (
-        <div className="z-10 mt-2.5 p-3 rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 flex flex-col gap-2 shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-[11px] font-unbounded font-bold text-[#D4FF3A]">
-              <Car className="w-3.5 h-3.5" />
-              <span>Bate-volta (~100km):</span>
-            </div>
-            <span className="text-[10px] text-white/50">Toque 1x p/ trocar cidade</span>
+        {/* Micro Header */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/10 text-[#D4FF3A] text-[10px] font-unbounded font-black tracking-wide border border-white/10">
+            <Flame className="w-3 h-3 text-[#FFA36C]" />
+            <span>O MELHOR DA CIDADE, PRA AGORA</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {neighborCities.map((dest) => {
-              const isCurrent = currentCity.name === dest.name;
+          <button
+            onClick={() => setShowContextWidgets(!showContextWidgets)}
+            className="text-[10px] text-white/60 hover:text-white flex items-center gap-1 cursor-pointer"
+          >
+            <span>{showContextWidgets ? 'Menos clima' : 'Ver clima & dicas'}</span>
+            {showContextWidgets ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+        </div>
+
+        {/* Clean Headline */}
+        <h1 className="font-unbounded font-black text-xl sm:text-2xl text-white tracking-tight leading-snug mb-3">
+          O que combina com você <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4FF3A] via-[#FFA36C] to-[#FF3D7F]">agora?</span>
+        </h1>
+
+        {/* 1. BOTÕES DE AÇÃO RÁPIDA (PRIORIDADE MÁXIMA NO TOPO) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+          {/* Flagship 1: Decisão de 3 Toques */}
+          <button
+            onClick={() => {
+              sound.tap();
+              haptic.medium();
+              onStartThreeTouches(selectedVibeCategory);
+            }}
+            className="py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#D4FF3A] to-[#b8f01b] hover:brightness-105 text-[#14102E] font-unbounded font-black text-xs sm:text-sm shadow-[0_8px_25px_rgba(212,255,58,0.45)] active:scale-[0.98] transition-all flex items-center justify-between cursor-pointer group"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-[#14102E] text-[#D4FF3A] flex items-center justify-center">
+                <Play className="w-3.5 h-3.5 fill-[#D4FF3A] ml-0.5" />
+              </div>
+              <div className="text-left">
+                <span className="block leading-tight font-black text-xs sm:text-sm">
+                  Decisão de 3 Toques
+                </span>
+                <span className="text-[10px] text-[#14102E]/70 font-sans font-medium block">
+                  Escolha Quando, Quem e Vibe
+                </span>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-[#14102E] group-hover:translate-x-1 transition-transform" />
+          </button>
+
+          {/* Flagship 2: Decide por mim agora */}
+          <button
+            onClick={handleDecideWithCurrentSelection}
+            className="py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-unbounded font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer group"
+          >
+            <Sparkles className="w-4 h-4 text-[#FF3D7F] group-hover:rotate-12 transition-transform" />
+            <span>Decide por mim ({selectedVibeCategory})</span>
+          </button>
+        </div>
+
+        {/* 2. VIBES DO MOMENTO (DIRETAMENTE ABAIXO DOS BOTÕES DE AÇÃO) */}
+        <div className="mb-3.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-unbounded font-black uppercase text-white/60 tracking-wider">
+              Vibes do Momento
+            </span>
+            <span className="text-[10px] text-[#D4FF3A] font-sans">
+              Toque para filtrar
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+            {[
+              { id: 'gastronomia', label: 'Jantar & Almoço', icon: '🍽️', sub: 'Comida boa' },
+              { id: 'drinques', label: 'Bares & Drinks', icon: '🍸', sub: 'Coquetelaria' },
+              { id: 'cultura', label: 'Cultura & Shows', icon: '🎭', sub: 'Ingressos' },
+              { id: 'estilo', label: 'Barbearia & Salão', icon: '✂️', sub: 'Cuidado' },
+              { id: 'fitness', label: 'Academias & Treino', icon: '🏋️', sub: 'Fitness' },
+              { id: 'agito', label: 'Balada & Pista', icon: '⚡', sub: 'Nightlife' },
+            ].map((vibe) => {
+              const isSelected = selectedVibeCategory === vibe.id;
               return (
                 <button
-                  key={dest.id}
+                  key={vibe.id}
                   onClick={() => {
                     sound.tap();
-                    haptic.medium();
-                    setCurrentCity(dest);
+                    haptic.light();
+                    setSelectedVibeCategory(vibe.id);
                   }}
-                  className={`p-2.5 rounded-xl border text-left transition-all active:scale-95 cursor-pointer flex flex-col justify-between ${
-                    isCurrent
-                      ? 'bg-[#D4FF3A] text-[#14102E] border-[#D4FF3A] shadow-[0_0_12px_rgba(212,255,58,0.35)]'
-                      : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                  className={`py-2 px-1.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center active:scale-95 ${
+                    isSelected
+                      ? 'bg-[#FF3D7F] text-white border-[#FF3D7F] shadow-[0_0_15px_rgba(255,61,127,0.45)] font-black'
+                      : 'bg-white/5 hover:bg-white/10 text-white/90 border-white/10 font-medium'
                   }`}
-                  title={`Trocar busca para ${dest.name} (~${dest.distanceKm} km)`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-unbounded font-black text-xs truncate">
-                      {dest.name}
-                    </span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                      isCurrent ? 'bg-black/20 text-[#14102E]' : 'bg-white/10 text-[#D4FF3A]'
-                    }`}>
-                      ~{dest.distanceKm}km
-                    </span>
-                  </div>
-                  <span className={`text-[10px] truncate mt-0.5 ${isCurrent ? 'text-[#14102E]/80 font-medium' : 'text-white/60'}`}>
-                    {dest.vibeTag}
-                  </span>
+                  <span className="text-sm mb-0.5">{vibe.icon}</span>
+                  <span className="text-[9px] font-unbounded leading-tight truncate w-full">{vibe.label}</span>
                 </button>
               );
             })}
           </div>
         </div>
-      )}
 
-      {/* VibeDashboard: Gemini AI Current User Vibe & Future Check-in Suggestions */}
-      <div className="z-10 mt-3">
-        <VibeDashboard
-          savedPlaces={savedPlaces}
-          userVisits={userVisits}
-          city={currentCity.name}
-          onQuickVibeSelect={onQuickVibeSelect}
-          onExploreCategory={() => onExplore()}
-        />
-      </div>
-
-      {/* Sugestão do Momento (Top Flagship Card based on GPS and Time of Day) */}
-      <div className="z-10 mt-3">
-        <MomentSuggestionCard
-          onSelectPlace={onSelectPlace}
-          onNavigateToPlace={onNavigateToPlace}
-          onToggleSave={onToggleSave}
-          isSaved={isSaved}
-          fallbackPlaces={finalPlaces}
-        />
-      </div>
-
-      {/* Center Main Stage (Exactly as Video 00:00 - 00:03) */}
-      <div className="my-auto py-8 z-10 flex flex-col items-start text-left">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-white/90 text-xs font-semibold mb-4 border border-white/10 backdrop-blur-sm">
-          <Clock className="w-3.5 h-3.5 text-[#D4FF3A]" />
-          <span>Onde vamos hoje ou amanhã?</span>
+        {/* 3. SELEÇÃO DE COMPANHIA (COMPACTA) */}
+        <div>
+          <span className="text-[10px] font-unbounded font-black uppercase text-white/60 mb-1.5 block tracking-wider">
+            Com quem você vai sair?
+          </span>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[
+              { id: 'casal', label: 'Date', icon: '🥂' },
+              { id: 'amigos', label: 'Amigos', icon: '🍻' },
+              { id: 'sozinho', label: 'Sozinho', icon: '☕' },
+              { id: 'familia', label: 'Família', icon: '👨‍👩‍👧' },
+            ].map((comp) => {
+              const isSelected = selectedCompanion === comp.id;
+              return (
+                <button
+                  key={comp.id}
+                  onClick={() => {
+                    sound.tap();
+                    haptic.light();
+                    setSelectedCompanion(comp.id as any);
+                  }}
+                  className={`py-1.5 px-2 rounded-xl border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 ${
+                    isSelected
+                      ? 'bg-[#D4FF3A] text-[#14102E] border-[#D4FF3A] font-black shadow-sm'
+                      : 'bg-white/5 hover:bg-white/10 text-white/90 border-white/10 font-medium'
+                  }`}
+                >
+                  <span className="text-xs">{comp.icon}</span>
+                  <span className="font-unbounded text-[10px] leading-tight">{comp.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+      </div>
 
-        <h1 className="font-unbounded font-black text-3xl sm:text-4xl text-white tracking-tight leading-[1.15] mb-4 drop-shadow-md">
-          O que combina <br />
-          com você <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4FF3A] to-[#FFA36C]">agora?</span>
-        </h1>
-
-        <p className="font-sans text-sm sm:text-base text-white/85 max-w-xs leading-relaxed font-normal">
-          Três lugares abertos agora, perto de você, cada um com um motivo.
-        </p>
-
-        {/* Quick Question Helpers */}
-        <div className="mt-6 flex flex-wrap gap-2">
-          {[
-            { label: 'Date romântico', vibe: 'casal' },
-            { label: 'Tomar um drinque', vibe: 'drinques' },
-            { label: 'Samba & agito', vibe: 'agito' },
-            { label: 'Corte de cabelo', vibe: 'estilo' },
-          ].map((pill) => (
-            <button
-              key={pill.label}
-              onClick={() => {
-                sound.tap();
-                onQuickVibeSelect(pill.vibe);
+      {/* =========================================================================
+          LISTAGENS MENOS CRÍTICAS MOVIDAS PARA BAIXO (CLIMA & CONTEXTO)
+          ========================================================================= */}
+      <AnimatePresence>
+        {showContextWidgets && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden z-10 space-y-2.5"
+          >
+            <WeatherBanner
+              isOutdoorFiltered={isOutdoorFiltered}
+              onApplyWeatherSuggestion={(vibe, filterOutdoors) => {
+                setIsOutdoorFiltered(filterOutdoors);
+                if (vibe) onQuickVibeSelect(vibe);
               }}
-              className="text-xs px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-white/90 transition-all font-medium active:scale-95"
-            >
-              + {pill.label}
-            </button>
-          ))}
-        </div>
-      </div>
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Live Google Places Section (Real places near user GPS) */}
-      <div className="z-10 my-4 w-full">
-        <div className="flex items-center justify-between mb-3 px-1">
-          <div className="flex items-center gap-2">
-            <span className="font-unbounded font-black text-xs sm:text-sm text-white">
-              Em alta perto de você
+      {/* =========================================================================
+          CATEGORY FILTER BAR (Tudo, Restaurantes, Bares, Cultura, Barbearias, Cupons)
+          ========================================================================= */}
+      <div className="z-10 pt-1">
+        <div className="flex items-center justify-between mb-2 px-1">
+          <div className="flex items-center gap-1.5">
+            <span className="font-unbounded font-black text-xs text-white">
+              Lugares em Alta
             </span>
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-[10px] font-bold text-blue-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              <span>Google Maps</span>
-            </div>
-            {isOutdoorFiltered && (
-              <button
-                onClick={() => {
-                  sound.tap();
-                  setIsOutdoorFiltered(false);
-                }}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/30 border border-blue-400/40 text-[10px] font-bold text-blue-200 hover:bg-blue-500/40 transition-all cursor-pointer"
-                title="Clique para remover o filtro de chuva e ver todos os locais"
-              >
-                <Umbrella className="w-3 h-3 text-blue-300" />
-                <span>Modo Chuva ✕</span>
-              </button>
-            )}
+            <span className="text-[10px] text-white/50">({filteredPlaces.length} locais)</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -278,67 +387,206 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <button
                 onClick={() => {
                   sound.tap();
+                  haptic.refresh();
                   onRefreshPlaces();
                 }}
                 disabled={isLoadingPlaces}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-[#D4FF3A] text-[11px] font-semibold border border-white/10 active:scale-95 transition-all disabled:opacity-50"
-                title="Alternar entre diferentes tipos de lugares (restaurantes, bares, cafés, baladas)"
+                className="text-[11px] text-[#D4FF3A] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3 h-3 ${isLoadingPlaces ? 'animate-spin' : ''}`} />
-                <span>
-                  {activeTypeName
-                    ? `Alternar (${activeTypeName === 'restaurant' ? 'Restaurantes' : activeTypeName === 'bar' ? 'Bares' : activeTypeName === 'cafe' ? 'Cafés' : 'Baladas'})`
-                    : 'Alternar tipo'}
-                </span>
+                <span>{isLoadingPlaces ? 'Atualizando...' : 'Recarregar'}</span>
               </button>
             )}
 
             <button
-              onClick={() => {
-                sound.tap();
-                onExplore();
-              }}
-              className="text-[11px] font-semibold text-white/80 hover:text-white flex items-center gap-0.5"
+              onClick={onExplore}
+              className="text-[11px] font-semibold text-white/80 hover:text-white flex items-center gap-0.5 cursor-pointer"
             >
-              <span>Ver feed</span>
+              <span>Ver todos</span>
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
         </div>
 
-        {/* Price Level Filter Bar ($ to $$$$) */}
-        <div className="mb-3">
-          <PriceFilterBar
-            currentPrice={priceFilter}
-            onChangePrice={setPriceFilter}
-          />
+        {/* Scrollable Category Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+          {/* Cupons */}
+          <button
+            onClick={() => {
+              sound.tap();
+              haptic.light();
+              setFeedCategory((prev) => (prev === 'cupons' ? 'todos' : 'cupons'));
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-black whitespace-nowrap transition-all shadow-sm flex items-center gap-1 cursor-pointer active:scale-95 ${
+              feedCategory === 'cupons'
+                ? 'bg-[#FF3D7F] text-white shadow-[0_0_12px_rgba(255,61,127,0.5)]'
+                : 'bg-white/5 text-[#FF3D7F] border border-[#FF3D7F]/30 hover:bg-[#FF3D7F]/10'
+            }`}
+          >
+            <Tag className="w-3 h-3" />
+            <span>🏷️ Cupons</span>
+          </button>
+
+          {/* Tudo */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('todos');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+              feedCategory === 'todos'
+                ? 'bg-[#D4FF3A] text-[#14102E] font-black'
+                : 'bg-white/5 text-white/80 hover:text-white border border-white/10'
+            }`}
+          >
+            Tudo
+          </button>
+
+          {/* Restaurantes */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('restaurantes');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+              feedCategory === 'restaurantes'
+                ? 'bg-[#D4FF3A] text-[#14102E] font-black'
+                : 'bg-white/5 text-white/80 hover:text-white border border-white/10'
+            }`}
+          >
+            🍽️ Restaurantes
+          </button>
+
+          {/* Bares */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('bares');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+              feedCategory === 'bares'
+                ? 'bg-[#D4FF3A] text-[#14102E] font-black'
+                : 'bg-white/5 text-white/80 hover:text-white border border-white/10'
+            }`}
+          >
+            🍸 Bares & Drinks
+          </button>
+
+          {/* Cultura & Shows (Com link de Ingressos) */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('eventos');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 flex items-center gap-1 ${
+              feedCategory === 'eventos'
+                ? 'bg-[#6A4CFF] text-white font-black shadow-[0_0_12px_rgba(106,76,255,0.5)]'
+                : 'bg-white/5 text-[#D4FF3A] hover:bg-[#6A4CFF]/20 border border-[#6A4CFF]/30'
+            }`}
+          >
+            <Ticket className="w-3 h-3 text-[#D4FF3A]" />
+            <span>🎭 Cultura & Ingressos</span>
+          </button>
+
+          {/* Barbearias */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('cuidado_masculino');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+              feedCategory === 'cuidado_masculino'
+                ? 'bg-[#D4FF3A] text-[#14102E] font-black'
+                : 'bg-white/5 text-white/80 hover:text-white border border-white/10'
+            }`}
+          >
+            ✂️ Barbearias
+          </button>
+
+          {/* Salão & Beleza */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('cuidado_feminino');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+              feedCategory === 'cuidado_feminino'
+                ? 'bg-[#FF3D7F] text-white font-black'
+                : 'bg-white/5 text-white/80 hover:text-white border border-white/10'
+            }`}
+          >
+            💇‍♀️ Salão & Beleza
+          </button>
+
+          {/* Academias & Fitness */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('fitness');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 flex items-center gap-1 ${
+              feedCategory === 'fitness'
+                ? 'bg-[#D4FF3A] text-[#14102E] font-black'
+                : 'bg-white/5 text-white/80 hover:text-white border border-white/10'
+            }`}
+          >
+            <Dumbbell className="w-3 h-3" />
+            <span>Academias & Treino</span>
+          </button>
+
+          {/* Cafés */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('cafes');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+              feedCategory === 'cafes'
+                ? 'bg-[#D4FF3A] text-[#14102E] font-black'
+                : 'bg-white/5 text-white/80 hover:text-white border border-white/10'
+            }`}
+          >
+            ☕ Cafés
+          </button>
+
+          {/* Baladas */}
+          <button
+            onClick={() => {
+              sound.tap();
+              setFeedCategory('baladas');
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-unbounded font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+              feedCategory === 'baladas'
+                ? 'bg-[#D4FF3A] text-[#14102E] font-black'
+                : 'bg-white/5 text-white/80 hover:text-white border border-white/10'
+            }`}
+          >
+            ⚡ Baladas
+          </button>
         </div>
 
-        {/* Carousel / Cards */}
-        {isLoadingPlaces ? (
-          <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="w-64 h-48 rounded-2xl bg-white/5 border border-white/10 animate-pulse shrink-0 p-3 flex flex-col justify-between"
-              >
-                <div className="w-full h-24 rounded-xl bg-white/10" />
-                <div className="space-y-1.5">
-                  <div className="w-3/4 h-3 rounded bg-white/10" />
-                  <div className="w-1/2 h-2.5 rounded bg-white/10" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : places.length === 0 ? (
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-center text-xs text-white/60">
-            Buscando estabelecimentos reais com Google Maps...
+        {/* Price Filter Bar */}
+        <div className="mt-2">
+          <PriceFilterBar currentPrice={priceFilter} onChangePrice={setPriceFilter} />
+        </div>
+      </div>
+
+      {/* =========================================================================
+          FEED CARDS (Horizontal Carousel & Quick Navigation)
+          ========================================================================= */}
+      <div className="z-10 pb-4">
+        {filteredPlaces.length === 0 ? (
+          <div className="p-8 rounded-3xl bg-black/30 border border-white/10 text-center text-white/60">
+            <p className="text-sm font-unbounded font-bold mb-1">Nenhum lugar encontrado nesse filtro.</p>
+            <p className="text-xs text-white/40">Tente alternar a categoria ou limpar o filtro de preço.</p>
           </div>
         ) : (
           <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
-            {finalPlaces.slice(0, 8).map((place) => {
+            {filteredPlaces.map((place) => {
               const dist = calculateDistance(place.lat, place.lng);
               const saved = isSaved(place.id);
+              const isCultural = place.category === 'eventos' || place.culturalType;
+
               return (
                 <div
                   key={place.id}
@@ -347,63 +595,74 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     haptic.light();
                     onSelectPlace(place);
                   }}
-                  className="w-64 shrink-0 p-3 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 hover:border-white/25 transition-all cursor-pointer group flex flex-col justify-between"
+                  className="w-64 sm:w-72 shrink-0 p-3.5 rounded-2xl bg-[#14102E]/90 hover:bg-[#1b153d] border border-white/15 transition-all shadow-lg flex flex-col justify-between cursor-pointer group active:scale-[0.99]"
                 >
                   <div>
-                    {/* Place Photo & Overlay Badges with Shared Layout Animation */}
-                    <div className="relative w-full h-28 rounded-xl overflow-hidden mb-2.5 bg-black/40">
-                      <motion.img
-                        layoutId={`place-image-${place.id}`}
+                    {/* Image with Badges */}
+                    <div className="relative h-36 rounded-xl overflow-hidden mb-2.5">
+                      <img
                         src={place.imageUrl}
                         alt={place.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                       />
-                      <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[10px] font-bold text-[#D4FF3A]">
-                        {place.categoryLabel}
-                      </span>
-                      {place.coupon && (
-                        <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-[#FF3D7F] text-white text-[9px] font-unbounded font-black shadow-md flex items-center gap-1">
-                          <span>🏷️ {place.coupon.discount}</span>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
+
+                      {/* Top Badges */}
+                      <div className="absolute top-2 left-2 right-2 flex items-center justify-between">
+                        <span className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[#D4FF3A] text-[9px] font-unbounded font-black border border-white/10">
+                          {place.categoryLabel}
                         </span>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          sound.pop();
-                          haptic.light();
-                          onToggleSave(place);
-                        }}
-                        className={`absolute top-2 right-2 w-7 h-7 rounded-full backdrop-blur-md flex items-center justify-center transition-all ${
-                          saved ? 'bg-[#FF3D7F] text-white shadow-md' : 'bg-black/50 text-white hover:text-[#FF3D7F]'
-                        }`}
-                        title={saved ? 'Remover' : 'Guardar'}
-                      >
-                        <Heart className={`w-3.5 h-3.5 ${saved ? 'fill-current' : ''}`} />
-                      </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sound.tap();
+                            haptic.medium();
+                            onToggleSave(place);
+                          }}
+                          className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                            saved ? 'bg-[#FF3D7F] text-white' : 'bg-black/50 text-white/80 hover:text-white'
+                          }`}
+                        >
+                          <Heart className={`w-3.5 h-3.5 ${saved ? 'fill-current' : ''}`} />
+                        </button>
+                      </div>
+
+                      {/* Coupon / Ticket Highlight on bottom of photo */}
+                      {place.coupon ? (
+                        <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-[#FF3D7F] text-white text-[9px] font-unbounded font-black flex items-center gap-1 shadow-md">
+                          <span>🏷️ {place.coupon.discount}</span>
+                        </div>
+                      ) : isCultural ? (
+                        <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-[#6A4CFF] text-white text-[9px] font-unbounded font-black flex items-center gap-1 shadow-md">
+                          <Ticket className="w-2.5 h-2.5 text-[#D4FF3A]" />
+                          <span>Ingressos Oficiais</span>
+                        </div>
+                      ) : place.wellnessType ? (
+                        <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-emerald-500/90 text-white text-[9px] font-unbounded font-black flex items-center gap-1 shadow-md">
+                          <span>{place.wellnessType === 'fitness' ? '🏋️ Passe Livre' : '✂️ Horário Livre'}</span>
+                        </div>
+                      ) : null}
                     </div>
 
-                    {/* Place Info */}
-                    <div className="flex items-start justify-between gap-1">
-                      <h4 className="font-unbounded font-bold text-xs text-white group-hover:text-[#D4FF3A] transition-colors truncate">
-                        {place.title}
-                      </h4>
-                      <span className="text-[11px] font-bold text-white/80 shrink-0">
-                        {place.priceLevel}
-                      </span>
-                    </div>
+                    {/* Title & Info */}
+                    <h3 className="font-unbounded font-black text-sm text-white truncate mb-1">
+                      {place.title}
+                    </h3>
 
-                    <p className="text-[11px] text-white/60 truncate mt-0.5">
-                      {place.subCategory} • {place.neighborhood}
+                    <p className="text-[11px] text-white/70 line-clamp-2 leading-relaxed mb-2 font-sans">
+                      “{place.motivoAgora}”
                     </p>
 
-                    {/* Rating & Distance */}
-                    <div className="flex items-center gap-2 mt-2 text-[11px]">
+                    {/* Stats */}
+                    <div className="flex items-center gap-2 text-[11px] text-white/70">
                       <span className="flex items-center gap-1 font-bold text-[#D4FF3A]">
                         <Star className="w-3 h-3 fill-current" />
                         {place.rating}
-                        <span className="text-white/40 font-normal">({place.reviewCount})</span>
                       </span>
+                      <span className="text-white/30">•</span>
+                      <span>{place.priceLevel}</span>
                       <span className="text-white/30">•</span>
                       <span className="text-[#FFA36C] font-medium flex items-center gap-0.5">
                         <MapPin className="w-3 h-3" />
@@ -412,9 +671,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     </div>
                   </div>
 
-                  {/* Actions Bar */}
-                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/10">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  {/* Action Bar */}
+                  <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-white/10">
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                       place.isOpenNow ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
                     }`}>
                       {place.openStatus}
@@ -424,9 +683,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       onClick={(e) => {
                         e.stopPropagation();
                         sound.tap();
+                        haptic.medium();
                         onNavigateToPlace(place);
                       }}
-                      className="px-2.5 py-1 rounded-lg bg-[#D4FF3A] hover:bg-[#c6f32e] text-[#14102E] text-[10px] font-unbounded font-black flex items-center gap-1 shadow-sm active:scale-95 transition-all"
+                      className="px-2.5 py-1 rounded-lg bg-[#D4FF3A] hover:bg-[#c6f32e] text-[#14102E] text-[10px] font-unbounded font-black flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
                     >
                       <Navigation className="w-2.5 h-2.5 fill-[#14102E]" />
                       <span>Me leva lá</span>
@@ -438,91 +698,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         )}
       </div>
-
-      {/* Personalized Curation Section based on last 5 saved/visited places */}
-      <PersonalizedCurationSection
-        savedPlaces={savedPlaces}
-        userVisits={userVisits}
-        allPlaces={places}
-        onSelectPlace={onSelectPlace}
-        onNavigateToPlace={onNavigateToPlace}
-        onToggleSave={onToggleSave}
-        isSaved={isSaved}
-      />
-
-      {/* Primary Actions Area */}
-      <div className="z-10 flex flex-col gap-3 w-full max-w-sm mx-auto pt-4">
-        {/* Flagship CTA: Decide por mim (Page 05 & 10 Brand Manual) */}
-        <button
-          onClick={() => {
-            sound.tap();
-            onDirectDecide();
-          }}
-          className="w-full py-4 px-6 rounded-full bg-[#D4FF3A] hover:bg-[#c6f32e] text-[#14102E] font-unbounded font-black text-base shadow-[0_8px_25px_rgba(212,255,58,0.4)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 group cursor-pointer"
-        >
-          <Sparkles className="w-5 h-5 text-[#14102E] group-hover:rotate-12 transition-transform" />
-          <span>Decide por mim</span>
-        </button>
-
-        {/* Voice & Chat Assistant Button */}
-        <button
-          onClick={() => {
-            sound.tap();
-            onOpenChat();
-          }}
-          className="w-full py-3.5 px-4 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-unbounded font-bold flex items-center justify-center gap-2 backdrop-blur-md active:scale-95 transition-all shadow-md group cursor-pointer"
-        >
-          <Mic className="w-4 h-4 text-[#D4FF3A] group-hover:scale-110 transition-transform" />
-          <span>Falar com Amigo Local (Voz ou Chat)</span>
-        </button>
-
-        {/* Secondary: Deixa eu escolher (3-touches flow) */}
-        <button
-          onClick={() => {
-            sound.tap();
-            onStartThreeTouches();
-          }}
-          className="w-full py-2.5 text-center text-sm font-sans font-semibold text-white/90 hover:text-white transition-all underline underline-offset-4 decoration-white/30 hover:decoration-white"
-        >
-          Deixa eu escolher (3 toques)
-        </button>
-
-        {/* Tertiary: Ver guardados */}
-        <button
-          onClick={() => {
-            sound.tap();
-            onOpenSaved();
-          }}
-          className="w-full py-1 text-center text-xs font-sans font-medium text-white/60 hover:text-[#D4FF3A] transition-all flex items-center justify-center gap-1.5"
-        >
-          <Bookmark className="w-3.5 h-3.5" />
-          <span>Ver guardados</span>
-        </button>
-      </div>
-
-      {/* Floating 'Recarregar Sugestões' Button with pulse animation and haptic feedback */}
-      {onRefreshPlaces && (
-        <div className="sticky bottom-4 self-center z-30 pt-4 pointer-events-auto">
-          <button
-            onClick={() => {
-              sound.tap();
-              haptic.refresh();
-              onRefreshPlaces();
-            }}
-            disabled={isLoadingPlaces}
-            className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-[#1b153d]/95 hover:bg-[#251b54] text-[#D4FF3A] border border-[#D4FF3A]/60 shadow-[0_4px_22px_rgba(212,255,58,0.35)] backdrop-blur-md active:scale-95 transition-all cursor-pointer group"
-          >
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#D4FF3A] opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#D4FF3A]" />
-            </span>
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingPlaces ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-            <span className="font-unbounded font-black text-xs tracking-tight">
-              Recarregar Sugestões
-            </span>
-          </button>
-        </div>
-      )}
     </div>
   );
 };

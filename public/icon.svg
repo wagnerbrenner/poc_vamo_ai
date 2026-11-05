@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="128" fill="#14102E"/>
+  <defs>
+    <linearGradient id="pwaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#6A4CFF" />
+      <stop offset="50%" stopColor="#A238FF" />
+      <stop offset="100%" stopColor="#FF3D7F" />
+    </linearGradient>
+    <filter id="pwaGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" floodColor="#FF3D7F" floodOpacity="0.45" />
+    </filter>
+  </defs>
+  <g filter="url(#pwaGlow)" transform="translate(56, 56) scale(4)">
+    <path d="M50 94C50 94 84 62 84 40C84 21.2223 68.7777 6 50 6C31.2223 6 16 21.2223 16 40C16 62 50 94 50 94Z" fill="url(#pwaGrad)"/>
+    <path d="M42 26L68 40L42 54V26Z" fill="#D4FF3A"/>
+  </g>
+</svg>

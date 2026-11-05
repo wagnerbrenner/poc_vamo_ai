@@ -26,6 +26,9 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { LocationPickerModal } from './components/LocationPickerModal';
 import { InitialLocationModal } from './components/InitialLocationModal';
 import { SettingsModal } from './components/SettingsModal';
+import { PWAInstallModal } from './components/PWAInstallModal';
+import { VoiceSearchModal } from './components/VoiceSearchModal';
+import { VoiceCommandResult } from './hooks/useWebSpeech';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SplashScreen } from './components/SplashScreen';
 import { INITIAL_PLACES } from './data/mockPlaces';
@@ -77,6 +80,8 @@ function MainApp() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isVoiceSearchOpen, setIsVoiceSearchOpen] = useState(false);
 
   // 1. Initial load: Read from AsyncStorage cache immediately for offline capability
   useEffect(() => {
@@ -611,6 +616,42 @@ function MainApp() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const handleVoiceCommand = (cmd: VoiceCommandResult) => {
+    sound.success();
+    haptic.success();
+    if (cmd.action === 'open_map') {
+      setActiveSession(null);
+      setCurrentTab('mapa');
+      return;
+    }
+    if (cmd.action === 'decide') {
+      handleDirectDecide();
+      return;
+    }
+    if (cmd.action === 'open_cupons') {
+      setActiveSession(null);
+      setCurrentTab('explorar');
+      return;
+    }
+    if (cmd.action === 'filter_companion') {
+      const randomVibe: OutingPlanSession['vibe'] = ['gastronomia', 'drinques', 'agito', 'relax'][Math.floor(Math.random() * 4)] as any;
+      setActiveSession({
+        when: 'agora',
+        withWhom: cmd.companion || 'casal',
+        vibe: randomVibe,
+      });
+      return;
+    }
+    if (cmd.action === 'filter_category') {
+      setActiveSession(null);
+      setCurrentTab('explorar');
+      return;
+    }
+    // Generic query -> switch to chat with the voice prompt
+    setActiveSession(null);
+    setCurrentTab('chat');
+  };
+
   const handleOpenMapFromPlace = (place: PlaceItem) => {
     setSelectedPlaceForMap(place);
     setCurrentTab('mapa');
@@ -699,6 +740,7 @@ function MainApp() {
           onOpenLocationModal={() => setIsLocationModalOpen(true)}
           onOpenProfileModal={() => setIsProfileModalOpen(true)}
           onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+          onOpenInstallModal={() => setIsInstallModalOpen(true)}
         />
 
         {/* Offline Indicator & AsyncStorage Cache Status */}
@@ -755,6 +797,8 @@ function MainApp() {
                   activeTypeName={activeTypeName}
                   savedPlaces={savedPlaces}
                   userVisits={userVisits}
+                  onOpenVoiceSearch={() => setIsVoiceSearchOpen(true)}
+                  onOpenLocationModal={() => setIsLocationModalOpen(true)}
                 />
               </motion.div>
             ) : currentTab === 'explorar' ? (
@@ -884,6 +928,22 @@ function MainApp() {
           isOpen={isSettingsModalOpen}
           onClose={() => setIsSettingsModalOpen(false)}
           onTestWeatherAlert={handleSimulateWeatherAlert}
+          onOpenInstallModal={() => {
+            setIsSettingsModalOpen(false);
+            setIsInstallModalOpen(true);
+          }}
+        />
+
+        <PWAInstallModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setIsInstallModalOpen(false)}
+        />
+
+        <VoiceSearchModal
+          isOpen={isVoiceSearchOpen}
+          onClose={() => setIsVoiceSearchOpen(false)}
+          onApplyVoiceCommand={handleVoiceCommand}
+          currentCityName={currentCity.name}
         />
       </div>
     </PhoneFrame>

@@ -48,8 +48,13 @@ export const ALL_EXPLORE_CITIES: DestinationCity[] = [
   { id: 'mg-ouropreto', name: 'Ouro Preto', state: 'MG', neighborhood: 'Centro Barroco', lat: -20.3856, lng: -43.5036, vibeTag: 'História, Cachaças & Charme' },
   { id: 'mg-brumadinho', name: 'Brumadinho', state: 'MG', neighborhood: 'Inhotim & Natureza', lat: -20.1439, lng: -44.1989, vibeTag: 'Arte Contemporânea & Verde' },
   // Sul
+  { id: 'rs-canoas', name: 'Canoas', state: 'RS', neighborhood: 'Marechal Rondon & Centro', lat: -29.9189, lng: -51.1794, vibeTag: 'Grande POA, Parques & Gastronomia' },
   { id: 'rs-portoalegre', name: 'Porto Alegre', state: 'RS', neighborhood: 'Moinhos de Vento & Orla do Guaíba', lat: -30.0346, lng: -51.2177, vibeTag: 'Pôr do Sol, Parrillas & Bares' },
+  { id: 'rs-novohamburgo', name: 'Novo Hamburgo', state: 'RS', neighborhood: 'Hamburgo Velho & Centro', lat: -29.6783, lng: -51.1306, vibeTag: 'Vale dos Sinos & Cervejarias' },
+  { id: 'rs-saoleopoldo', name: 'São Leopoldo', state: 'RS', neighborhood: 'Rua Grande & Morro do Espelho', lat: -29.7547, lng: -51.1472, vibeTag: 'Bares Noturnos & Gastronomia' },
   { id: 'rs-gramado', name: 'Gramado', state: 'RS', neighborhood: 'Centro & Borges de Medeiros', lat: -29.3746, lng: -50.8764, vibeTag: 'Chocolates, Fondue & Romantismo' },
+  { id: 'rs-caxiasdosul', name: 'Caxias do Sul', state: 'RS', neighborhood: 'São Pelegrino & Centro', lat: -29.1678, lng: -51.1794, vibeTag: 'Serra Gaúcha, Galeto & Vinho' },
+  { id: 'rs-bentogoncalves', name: 'Bento Gonçalves', state: 'RS', neighborhood: 'Vale dos Vinhedos', lat: -29.1713, lng: -51.5190, vibeTag: 'Capital Brasileira do Vinho' },
   { id: 'sc-floripa', name: 'Florianópolis', state: 'SC', neighborhood: 'Lagoa & Santo Antônio de Lisboa', lat: -27.5954, lng: -48.5480, vibeTag: 'Ostras Frescas & Noites na Ilha' },
   { id: 'ba-salvador', name: 'Salvador', state: 'BA', neighborhood: 'Rio Vermelho & Pelourinho', lat: -12.9777, lng: -38.5016, vibeTag: 'Acarajé, Dendê & Música ao Vivo' },
   { id: 'df-brasilia', name: 'Brasília', state: 'DF', neighborhood: 'Asa Sul & Lago Paranoá', lat: -15.7975, lng: -47.8919, vibeTag: 'Píer, Alta Gastronomia & Arquitetura' },
@@ -89,6 +94,7 @@ interface LocationContextType {
   requestGpsLocation: (onSuccess?: (city: LocationCity) => void) => void;
   calculateDistance: (destLat: number, destLng: number) => { km: number; walkingMin: number; drivingMin: number };
   getNearbyCitiesAround100km: () => DestinationCity[];
+  searchCities: (query: string) => Promise<DestinationCity[]>;
 }
 
 const LocationContext = createContext<LocationContextType>({} as LocationContextType);
@@ -109,14 +115,40 @@ export function getDistanceInKm(lat1: number, lon1: number, lat2: number, lon2: 
 }
 
 export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentCity, setCurrentCity] = useState<LocationCity>(PRESET_CITIES[0]);
-  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number }>({
-    lat: PRESET_CITIES[0].lat,
-    lng: PRESET_CITIES[0].lng,
+  const [currentCity, setCurrentCity] = useState<LocationCity>(() => {
+    try {
+      const saved = localStorage.getItem('@vamo_ai:chosen_city');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.name && parsed?.lat) return parsed;
+      }
+    } catch (e) {}
+    return PRESET_CITIES[0];
   });
+
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number }>(() => {
+    try {
+      const saved = localStorage.getItem('@vamo_ai:chosen_city');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.lat && parsed?.lng) return { lat: parsed.lat, lng: parsed.lng };
+      }
+    } catch (e) {}
+    return { lat: PRESET_CITIES[0].lat, lng: PRESET_CITIES[0].lng };
+  });
+
   const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
   const [gpsLoading, setGpsLoading] = useState<boolean>(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // Auto-detect real location if permission was previously granted
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('@vamo_ai:gps_allowed') === 'true' && navigator.geolocation) {
+        requestGpsLocation();
+      }
+    } catch (e) {}
+  }, []);
 
   const requestGpsLocation = (onSuccess?: (city: LocationCity) => void) => {
     if (!navigator.geolocation) {
@@ -152,6 +184,10 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             };
             setCurrentCity(resolvedCity);
             setGpsLoading(false);
+            try {
+              localStorage.setItem('@vamo_ai:gps_allowed', 'true');
+              localStorage.setItem('@vamo_ai:chosen_city', JSON.stringify(resolvedCity));
+            } catch (e) {}
             if (onSuccess) onSuccess(resolvedCity);
             return;
           }
@@ -169,6 +205,10 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
         setCurrentCity(fallbackCity);
         setGpsLoading(false);
+        try {
+          localStorage.setItem('@vamo_ai:gps_allowed', 'true');
+          localStorage.setItem('@vamo_ai:chosen_city', JSON.stringify(fallbackCity));
+        } catch (e) {}
         if (onSuccess) onSuccess(fallbackCity);
       },
       (err) => {
@@ -184,6 +224,38 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsGpsActive(false);
     setCurrentCity(city);
     setUserCoords({ lat: city.lat, lng: city.lng });
+    try {
+      localStorage.setItem('@vamo_ai:chosen_city', JSON.stringify(city));
+    } catch (e) {}
+  };
+
+  const searchCities = async (query: string): Promise<DestinationCity[]> => {
+    const q = query.trim();
+    if (!q) return [];
+    try {
+      const res = await fetch(`/api/search-cities?q=${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.cities) && data.cities.length > 0) {
+          return data.cities.map((c: any) => ({
+            ...c,
+            distanceKm: getDistanceInKm(userCoords.lat, userCoords.lng, c.lat, c.lng),
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('searchCities client fetch error:', err);
+    }
+    const norm = q.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return ALL_EXPLORE_CITIES.filter((c) => {
+      const cNorm = c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const sNorm = c.state.toLowerCase();
+      const nNorm = c.neighborhood.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      return cNorm.includes(norm) || sNorm === norm || nNorm.includes(norm);
+    }).map((c) => ({
+      ...c,
+      distanceKm: getDistanceInKm(userCoords.lat, userCoords.lng, c.lat, c.lng),
+    }));
   };
 
   const calculateDistance = (destLat: number, destLng: number) => {
@@ -208,6 +280,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       requestGpsLocation,
       calculateDistance,
       getNearbyCitiesAround100km,
+      searchCities,
     }}>
       {children}
     </LocationContext.Provider>
